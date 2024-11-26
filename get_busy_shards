@@ -1,0 +1,29 @@
+#!/usr/bin/env python3
+import json
+
+import fdb
+
+fdb.api_version(710)
+db = fdb.open("/fdb-cluster-config/cluster-file")
+
+vals = {}
+prefix = b"\xff\xff/metrics/data_distribution_stats/"
+for k, v in db.get_range_startswith(prefix):
+    j = json.loads(v.decode("utf-8"))
+    vals[k] = j
+    if j["shard_bytes_per_ksecond"] > 0:
+        print(
+            f"{k.replace(prefix, b'')} {int(j['shard_bytes_per_ksecond']/10e3)}B/s  {int(j['shard_bytes']/10e3)}KB "
+        )
+
+sorted_data = dict(
+    sorted(vals.items(), key=lambda item: item[1]["shard_bytes_per_ksecond"])
+)
+# for k, v in sorted_data.items():
+#   print(f"{k} {int(v['shard_bytes_per_ksecond']/10e3)}")
+
+tr = db.create_transaction()
+tr.options.set_access_system_keys()
+REBALANCE_SETTINGS_KEY = b"\xff\x02/r"
+for k, v in tr.get_range_startswith(REBALANCE_SETTINGS_KEY, 10000):
+    print(f"{k} {v}")
